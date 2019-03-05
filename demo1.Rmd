@@ -1,0 +1,322 @@
+---
+title: "demo1"
+author: "Ville Laitinen"
+date: "5 3 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+
+# Getting started
+
+* Define variables:
+
+```{r}
+smallnum <- 4
+bignum <- 124
+```
+
+
+* Check contents of environment:
+
+```{r}
+ls()
+```
+
+
+* Environment can be cleaned with ```rm(list=ls())```.
+
+
+```{r}
+# some basic operations
+smallnum + bignum
+bignum/smallnum
+```
+
+* In R code hash (#) is used for comments.   
+
+* Sourcing doesn't print the commands to console resulting in a tidyer R experience.
+
+* History tab contain all commands run in console.
+
+## Vectors, matrices and data frames
+
+* Define some vectors: 
+
+```{r}
+examplevector1 <- c(2, 4, 9, 5)
+examplevector2 <- 1:25
+examplevector3 <- seq(1,9,length=100)
+examplevector4 <- seq(0,2*pi,by=pi/8)
+```
+
+* Access the first six elements of vector with ```head()```
+
+```{r}
+head(examplevector3)
+```
+
+
+* Define some matrices:
+
+```{r}
+examplematrix1 <- matrix(c(-1,2,3,1),nrow=2,ncol=2)
+examplematrix2 <- matrix(1:12,nrow=3)
+examplematrix3 <- t(examplematrix2)
+```
+
+
+* Matrices are stored as data, vectors as values in the environment.
+
+* Elementwise matrix multiplication:
+
+```{r}
+examplematrix1*examplematrix1
+```
+
+
+* Matrix multiplication: 
+
+```{r}
+examplematrix1%*%examplematrix1
+```
+
+* Matrix multiplied by its inverse results in (approximate) identity matrix
+
+```{r}
+examplematrix1%*%solve(examplematrix1)
+```
+
+
+* Define data frame. Data frames are stored as data in the environment
+
+```{r}
+exampledataframe <- data.frame(Age = c(34,21,40,23), grade = LETTERS[1:4])
+```
+
+
+
+
+## Logical comparisons and loops
+
+### Logical (boolean) variables
+
+```{r}
+logicalval <- FALSE
+logicalval == TRUE # this is to test whether logicalval is equal to TRUE
+logicalval == 1 # the same as the above
+logicalval == 0 # indeed, logicalval is FALSE
+
+
+smallnum < bignum
+smallnum > bignum
+! (smallnum < bignum)
+smallnum + 120 == bignum
+
+
+examplevector1 > smallnum
+examplematrix3%*%examplematrix2 < bignum
+```
+
+
+
+### For and while loops
+
+
+```{r}
+for (k in 1:10) {
+  # calculate whether smallnum is strictly less than k
+  logicalval <- smallnum < k
+  print(paste("It is", logicalval, "that", smallnum, "is strictly less than", k))
+}
+
+while(smallnum < 10){
+  # while smallnum is strictly less than 10 add 1 to it
+  print(paste(smallnum, "is strictly less than 10 so add 1 to it and test again..."))
+  smallnum <- smallnum + 1
+}
+```
+
+* A while loop is run as long as the condition is TRUE. 
+
+### Functions
+
+```{r}
+if(bignum > 100){
+  print("The number is strictly less than 100")
+}else{
+  print("The number is greater than or equal to 100")
+}
+
+
+strictinequalitycheck <- function(x){
+  logicalval <- x < 100
+  if(logicalval == 1){
+    print("The number is strictly less than 100")
+  }else{
+    print("The number is greater than or equal to 100")
+  }
+}
+
+strictinequalitycheck(smallnum)
+strictinequalitycheck(bignum)
+```
+
+* Functions are stored as functions in the environment
+
+
+# Exercise
+
+## 1. 
+
+```{r}
+strictinequalitycheck <- function(x, test_against){
+  logicalval <- x < test_against
+  if(logicalval == 1){
+    print(paste0("The number ", x," is strictly less than ", test_against))
+  }else{
+    print(paste0("The number ", x," is greater than or equal to ", test_against))
+  }
+}
+
+
+strictinequalitycheck(bignum, 100)
+
+```
+
+
+
+## 2. Pseudorandom numbers
+
+* Define random number generator: 
+
+```{r}
+
+rng <- function(X1, n, m, a, c) {
+  
+  # Check that parameters are ok
+  if(!(0 < m &
+       0 < a & a < m &
+       0 <= c & c < m &
+       1 <= n
+  )) {
+    stop("Check parameters!")
+  }
+  
+  
+  # Vector for output
+  X <- c(X1)
+  
+  for(i in 2:n) {
+    
+    X_new <- (a*X[i-1] + c)%%m
+    
+    X <- c(X, X_new)
+  }
+  
+  return(X)
+}
+```
+
+
+
+* Test 
+
+```{r}
+random_numbers <- rng(1, 100, 64, 33, 4)
+random_numbers
+```
+
+
+* Plot numbers
+
+```{r}
+
+p <- random_numbers %>% 
+  data.frame(rnumber = ., index = 1:length(random_numbers)) %>% 
+  ggplot(aes(x = index, y = rnumber)) +
+  geom_point() +
+  geom_line()
+  
+print(p)
+```
+
+
+* The numbers are clearly not random!
+
+* Lets try with parameter c = 5:
+
+```{r}
+random_numbers <- rng(1, 100, 64, 33, 5)
+
+
+p <- random_numbers %>% 
+  data.frame(rnumber = ., index = 1:length(random_numbers)) %>% 
+  ggplot(aes(x = index, y = rnumber)) +
+  geom_point() +
+  geom_line()
+  
+print(p)
+```
+
+* More randomness appears but still not impressively random. Now as c = 5 the cycle length becomes $2^6 = 64$.
+
+* With even different parameters:
+
+```{r}
+
+random_numbers <- rng(1, 1000, 86436, 1093, 18257)
+
+
+p <- random_numbers %>% 
+  data.frame(rnumber = ., index = 1:length(random_numbers)) %>% 
+  ggplot(aes(x = index, y = rnumber)) +
+  geom_point() +
+  geom_line()
+  
+print(p)
+
+
+histogram <- random_numbers %>% 
+  data.frame(rnumber = ., index = 1:length(random_numbers)) %>% 
+  ggplot(aes(x = rnumber)) +
+  geom_histogram()
+
+
+histogram
+```
+
+* The trace plot looks very random but the histogram leaves room for doubt. Ideally with more generated numbers we would expect a more or less uniform distribution as all values are equally likely. This however is not enough as the order a histogram doesn't tell anything about the order in which the numbers were generated. 
+
+
+* Let's try the generator with even more numbers: 
+  
+```{r}
+
+random_numbers <- rng(1, 10000, 86436, 1093, 18257)
+
+
+p <- random_numbers %>% 
+  data.frame(rnumber = ., index = 1:length(random_numbers)) %>% 
+  ggplot(aes(x = index, y = rnumber)) +
+  geom_point() +
+  geom_line()
+  
+print(p)
+
+
+histogram <- random_numbers %>% 
+  data.frame(rnumber = ., index = 1:length(random_numbers)) %>% 
+  ggplot(aes(x = rnumber)) +
+  geom_histogram(bins = 100)
+
+
+histogram
+```
+
+
+* Very random indeed. 
