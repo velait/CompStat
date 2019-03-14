@@ -1,0 +1,331 @@
+---
+title: "demo2"
+author: "Ville Laitinen"
+date: "8 3 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(Matrix)
+library(MASS)
+library(magrittr)
+library(tidyverse)
+library(scatterplot3d)
+library(gridExtra)
+
+theme_set(theme_bw(20))
+```
+
+
+
+## 1. Sampling Distributions in R
+
+* Define covariance matrix so that there's high correlation between 1. and 2. dimensions and variance of the first dimension is large compared to the other two: 
+
+```{r}
+
+Sigma <- matrix(c(10, 3, 0,
+                  3, 1, 0,
+                  0, 0, 1), 
+                nrow = 3, ncol = 3)
+
+# Sigma is positive definite:
+nearPD(Sigma)$mat %>% as.matrix()
+
+```
+
+
+* Simulate observations from multivariate normal with the above covariance and mean 0:
+
+```{r}
+
+x <- mvrnorm(250, mu = c(0, 0, 0), Sigma = Sigma) %>% 
+  as.data.frame()
+
+```
+
+
+* Pairwise plots:
+
+```{r}
+pairs(x)
+```
+
+
+* 3d plot: (plotly doesn't work, compatibility issues with rgl)
+
+```{r}
+
+p1 <- with(data = x,
+     scatterplot3d(x = V1,
+                   y = V2,
+                   z = V3)
+)
+
+p2 <- with(data = x,
+     scatterplot3d(x = V1,
+                   y = V2,
+                   z = V3, angle = -80)
+)
+
+```
+
+
+
+## 2. Sampling an Arbitrary Distribution
+
+### a) Sample the AADD with accept-reject
+
+```{r}
+
+# Function
+arm_AADD <- function(n) {
+  
+  # parameters
+  a <- 0
+  b <- 3
+  c <- 0.5
+  
+  # store samples
+  samples <- c()
+  
+  while(length(samples) < n) {
+    
+    x <- runif(1, a, b)
+    y <- runif(1, 0, c)
+    
+    if((x < 1 & y < .5*x) |
+       (x > 2 & y < .5 - .5*(x - 2)) |
+       (x < 2 & 1 < x & y < .5)) {
+      samples <- c(samples, x)
+    } 
+    
+  }
+  
+  return(samples)
+}
+
+# Sample and plot
+p <- arm_AADD(5000) %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x =  .)) +
+  geom_histogram() +
+  scale_x_continuous(limits = c(-1, 4))
+  
+p
+
+```
+
+
+
+
+### b) Sample the AADD with CDF
+
+* First define the CDF: 
+
+```{r}
+
+AADD_CDF <- function(x) {
+  
+  if(x <= 0) {
+    y <- 0
+  } else if (x <= 1) {
+    y <- .25*x^2
+  } else if(x <= 2) {
+    y <- .5*x - .25
+  } else if(x <= 3) {
+    y <- -.25*x^2 + 1.5*x - 1.25
+  } else {
+    y <- 1
+  }
+  
+  return(y)
+}
+
+
+x <- seq(from = -1, to = 4, by = 0.01)
+y <- sapply(x, AADD_CDF)
+
+p <- data.frame(x, y) %>% 
+  ggplot(aes(x = x, y = y)) + 
+  geom_point() +
+  labs(subtitle = "CDF of AADD")
+
+p
+```
+
+* Then the inverse: 
+
+```{r}
+
+inv_AADD_CDF <- function(x) {
+  
+  if(x < 0 | 1 < x) {
+    stop("x not in [0, 1]")
+  }
+  
+  if(x < .25) {
+    y <- 2*sqrt(x)
+  } else if(x < .75) {
+    y <- 2*x + .5
+  } else {
+    y <- 3 - 2*sqrt(1-x)
+  }
+  
+  return(y)
+}
+
+
+x <- seq(from = 0, to = 1, by = 0.01)
+y <- sapply(x, inv_AADD_CDF)
+
+p <- data.frame(x, y) %>% 
+  ggplot(aes(x = x, y = y)) +
+  geom_line() +
+  labs(subtitle = "Inverse CDF of AADD")
+
+p
+```
+
+* Inverse CDF seems ok. 
+
+* Now sample form AADD with the inverse:
+
+```{r}
+p <- sapply(runif(5000, 0, 1), inv_AADD_CDF) %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x =  .)) +
+  geom_histogram() +
+  scale_x_continuous(limits = c(-1, 4))
+  
+p
+
+```
+
+* Compare timing:
+
+```{r}
+inv_CDF_time <- system.time(sapply(runif(1000000, 0, 1), inv_AADD_CDF))
+
+arm_time <- system.time(sapply(runif(1000000, 0, 1), arm_AADD))
+
+arm_time
+inv_CDF_time
+```
+
+
+## 3. Sampling from a Ball 
+
+### a) Sampling rejection method
+
+* Sample points from a 2d unit ball. 
+
+```{r}
+
+# Function
+arm_2d_ball <- function(n) {
+  
+  n_samples <- rep(0, n)
+  points <- matrix(0, n, 2)
+  
+  for(i in 1:n) {
+    
+    # Initialize
+    x <- 2; y <- 2
+    
+    while(x^2 + y^2 > 1) {
+      
+      x <- runif(1, -1, 1)
+      y <- runif(1, -1, 1)
+      
+      n_samples[i] <- n_samples[i] + 2
+    }
+    
+    points[i, ] <- c(x, y)
+    
+  }
+  
+  
+  return(list(points = points, n_samples = n_samples))
+  
+}
+
+# Sample some points
+x_2d_ball <- arm_2d_ball(10000)
+
+
+p <- x_2d_ball$points %>%
+  as.data.frame() %>%
+  ggplot(aes(x = V1, y = V2)) +
+  geom_point(size = .25) +
+  labs(title = "Uniform(B_2)")
+
+print(p)
+
+# Samples needed on average (empirically)
+mean(x_2d_ball$n_samples)
+
+```
+
+
+* Theoretically this is $$\text{Geom}(p)) = \text{Geom}(\frac{\pi}{4})) \to \frac{4}{\pi} \to \frac{8}{\pi} \approx 2.5464$$
+
+
+
+### b)
+
+
+### c) Sample from a 3D ball
+
+* Clearly sampling a point from the ball requires only 3 samples from Unif(0, 1): 
+
+```{r}
+
+sample_3d_ball <- function(n) {
+  points <- matrix(0, n, 3)
+
+  for(i in 1:n) {
+    # radius
+    r <- runif(1, 0, 1)^(1/3)
+
+    # 1. angle
+    theta <- acos(1 - 2*runif(1, 0, 1))
+
+    # 2. angle
+    phi <- runif(1, 0, 1)*2*pi
+
+    # Spherical coordinates to cartesian
+    points[i, ] <- c(r*sin(theta)*cos(phi),
+                     r*sin(theta)*sin(phi),
+                     r*cos(theta))
+    # points[i, ] <- c(r, theta, phi)
+  }
+
+
+  return(points)
+}
+
+# Sample some
+x <- sample_3d_ball(1000)
+
+# Check that all are inside B3
+all(apply(x, 1, FUN = function(i) i^2 %>% sum) <= 1)
+
+```
+
+
+```{r}
+# p <- with(data = x %>% as.data.frame(),
+#      scatterplot3d(x = V1,
+#                    y = V2,
+#                    z = V3, angle = 0)
+# )
+# 
+# print(p)
+
+print(pairs(x %>% as.data.frame))
+
+```
+
