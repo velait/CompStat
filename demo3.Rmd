@@ -11,7 +11,7 @@ library(tidyverse)
 library(magrittr)
 ```
 
-# Monte Carlo integration / importance sampling
+# Monte Carlo integration  importance sampling
 ## 1 a)
 
 ```{r}
@@ -29,8 +29,9 @@ x <- runif(1000, 0, 2)
 ```
 
 
-## 2 Importance sampling
+# Importance sampling
 
+## 2
 ```{r}
 x <- runif(1000, 0, 1)
 
@@ -97,34 +98,155 @@ print(p_mean)
 
 ```
 
-""
-## 3
+
+## 3. 
+
+* Importance sampling with Uniform[0, 3] as the importance function (= non importance sampling?)
 
 ```{r}
-arm_AADD <- function(n) {
-  
-  # parameters
-  a <- 0
-  b <- 3
-  c <- 0.5
-  
-  # store samples
-  samples <- c()
-  
-  while(length(samples) < n) {
+
+x <- runif(10000, 0, 3)
+
+# f(x) = x
+(3 - 0)*x %>% mean
+
+# f(x) = x^2
+(3 - 0)*x^2 %>% mean
+
+```
+
+
+```{r}
+AADD <- function(X) {
     
-    x <- runif(1, a, b)
-    y <- runif(1, 0, c)
-    
-    if((x < 1 & y < .5*x) |
-       (x > 2 & y < .5 - .5*(x - 2)) |
-       (x < 2 & 1 < x & y < .5)) {
-      samples <- c(samples, x)
-    } 
-    
+  Y <- c()  
+  for(i in 1:length(X)) {
+    x <- X[i]
+          if(x < 0 | x > 3) {
+        y <- 0
+      } else if(x < 1) {
+        y <-  .5*x
+      } else if (x > 2) {
+        y <-  .5 - .5*(x - 2)
+      } else if(x < 2 & 1 < x) {
+        y <- .5
+      }
+    Y <- c(Y, y)
+  }
+
+  Y
+}
+inv_AADD_CDF <- function(x) {
+  
+  if(x < 0 | 1 < x) {
+    stop("x not in [0, 1]")
   }
   
-  return(samples)
+  if(x < .25) {
+    y <- 2*sqrt(x)
+  } else if(x < .75) {
+    y <- 2*x + .5
+  } else {
+    y <- 3 - 2*sqrt(1-x)
+  }
+  
+  return(y)
 }
+
+
+
+weighted_mc <- function(n = 1000, a, b, f, q, inv_cdf_q) {
+  
+  x <- runif(n)
+  X <- sapply(x, inv_cdf_q)
+  
+  w <- function(x) dunif(x, a, b)/q(x)
+  Y <- (b - a)*w(X)*f(X)
+  
+  c(mean = mean(Y), var = var(Y))
+}
+
+
+
+normal_mc <- function(n = 1000, a, b, func) {
+  x <- runif(n, a, b)
+  c(mean = (b-a)*mean(func(x)), var = var(func(x)))
+}
+
+
+
+# f(x) = x
+weighted_mc(10000, 0, 3,
+            f = function(x) x,
+            q = function(x) AADD(x),
+            inv_cdf_q = function(x) inv_AADD_CDF(x))
+
+# f(x) = x^2
+weighted_mc(10000, 0, 3,
+            f = function(x) x^2,
+            q = function(x) AADD(x),
+            inv_cdf_q = function(x) inv_AADD_CDF(x))
+```
+
+
+```{r}
+
+compare_estimates <- lapply(1000*c(1, 2, 5, 10, 20, 50, 100), function(n) {
+  
+  x <- runif(n, 0, 1)
+  
+  x_mc <- normal_mc(n, 0, 3, function(x) x)
+  x2_mc <- normal_mc(n, 0, 3, function(x) x^2)
+  
+  
+  x_aadd <- weighted_mc(10000, 0, 3,
+                               f = function(x) x,
+                               q = function(x) AADD(x),
+                               inv_cdf_q = function(x) inv_AADD_CDF(x))
+  x2_aadd <-  weighted_mc(10000, 0, 3,
+                               f = function(x) x^2,
+                               q = function(x) AADD(x),
+                               inv_cdf_q = function(x) inv_AADD_CDF(x))
+  
+  df <- rbind(x_mc, x2_mc, x_aadd, x2_aadd) %>% 
+    as.data.frame() %>% 
+    cbind(func = c("x", "x2", "x", "x2"),
+          method = c("normal", "normal", "weight", "weigth"),
+          n = rep(n, 4)) %>% 
+  set_colnames(c("x_mean", "x_var", "x2_mean", "x2_var", "function", "method", "n"))
+    
+  
+  
+  df
+  
+}) %>% 
+  do.call(rbind, .) 
+
+```
+
+
+
+************************************************************
+************************************************************
+************************************************************
+************************************************************
+
+
+## DUMP
+```{r}
+
+
+weighted_mc <- function(n = 1000, f) {
+  
+  x <- runif(n)
+  X <- sapply(x, inv_AADD_CDF)
+  
+  w <- function(x) dunif(x, 0, 3)/AADD(x)
+  Y <- 3*w(X)*f(X)
+  
+  mean(Y)
+}
+
+
 ```
 
