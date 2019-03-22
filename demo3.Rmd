@@ -212,8 +212,8 @@ compare_estimates <- lapply(1000*c(1, 2, 5, 10, 20, 50, 100), function(n) {
     as.data.frame() %>% 
     cbind(func = c("x", "x2", "x", "x2"),
           method = c("normal", "normal", "weight", "weigth"),
-          n = rep(n, 4)) %>% 
-  set_colnames(c("x_mean", "x_var", "x2_mean", "x2_var", "function", "method", "n"))
+          n = rep(n, 4))
+    
     
   
   
@@ -221,6 +221,19 @@ compare_estimates <- lapply(1000*c(1, 2, 5, 10, 20, 50, 100), function(n) {
   
 }) %>% 
   do.call(rbind, .) 
+
+
+
+compare_estimates %>% 
+  filter(func == "x") %>% 
+  ggplot(aes(x = n, y = var, color = method)) +
+  geom_line()
+
+
+compare_estimates %>% 
+  filter(func == "x2") %>% 
+  ggplot(aes(x = n, y = var, color = method)) +
+  geom_line()
 
 ```
 
