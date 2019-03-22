@@ -9,9 +9,15 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(magrittr)
+library(reshape2)
 ```
 
 # Monte Carlo integration  importance sampling
+
+
+
+
+
 ## 1 a)
 
 ```{r}
@@ -31,10 +37,51 @@ x <- runif(1000, 0, 2)
 
 # Importance sampling
 
+* Functions for normal and weighted Monte Carlo integration
+```{r}
+weighted_mc <- function(n_max = 1000, a, b, f, q, inv_cdf_q) {
+  
+  x <- runif(n_max)
+  X <- sapply(x, inv_cdf_q)
+  
+  w <- function(x) dunif(x, a, b)/q(x)
+  Y <- (b - a)*w(X)*f(X)
+  
+  cumsum_Y <- cumsum(Y)
+  
+  estimates <- sapply(1:n_max, FUN = function(i) {
+    
+    cumsum_Y[i]/i
+    
+  })
+  
+  estimates
+}
+
+
+
+normal_mc <- function(n_max = 1000, a, b, func) {
+  x <- runif(n_max, a, b)
+  
+  Y <- (b-a)*func(x)
+  
+  cumsum_Y <- cumsum(Y)
+  
+  
+  estimates <- sapply(1:n_max, FUN = function(i) {
+  
+  cumsum_Y[i]/i
+    
+  })
+  
+  estimates
+}
+
+```
+
+
 ## 2
 ```{r}
-x <- runif(1000, 0, 1)
-
 
 inv_G <- function(x) -1*log(1 - x*(exp(1) - 1)/exp(1))
 g <- function(x) (exp(-x+1))/(exp(1)-1)
@@ -45,24 +92,11 @@ p <- function(x) dunif(x, 0, 1)
 w <- function(x) p(x)/g(x)
 
 
+print("Importance weighing mean")
+weighted_mc(1000, 0, 1, f = f, q = g, inv_cdf_q = inv_G)[1000]
 
-weighted_mc <- function(n = 1000) {
-  X <- inv_G(runif(n, 0, 1))
-  X <- X[X<=1]
-  Y <- w(X)*f(X)
-  c(mean = mean(Y), var = var(Y))
-}
-
-normal_mc <- function(n = 1000) {
-  x <- runif(n, 0, 1)
-  c(mean = mean(f(x)), var = var(f(x)))
-}
-
-print("Importance weighing mean and variance")
-weighted_mc()
-
-print("No importance weighing mean and variance")
-normal_mc()
+print("No importance weighing")
+normal_mc(1000, 0, 1, f)[1000]
 
 
 ```
@@ -72,34 +106,25 @@ normal_mc()
 
 ```{r}
 
-comparison_df <- lapply(1000*c(1, 2, 5, 10, 20, 50, 100), function(n) {
-  rbind(
-    c(n, weighted_mc(n)),
-    c(n, normal_mc(n))
-  ) %>% as.data.frame() %>% 
-    cbind(c("yes", "no"))
-  
-}) %>%
-  do.call(rbind, .) %>%
-  set_colnames(c("n", "mean", "var", "weight"))
 
-p_var <- comparison_df %>%
-  ggplot(aes(x = n, y = var, color = weight)) +
+rep_normal <- replicate(100, normal_mc(1000, 0, 1, f))
+rep_weighted <- replicate(100, weighted_mc(1000, 0, 1, f = f, q = g, inv_cdf_q = inv_G))
+
+p <- cbind(var_normal = apply(rep_normal, 1, var),
+var_weighted = apply(rep_weighted, 1, var),
+n = 1:1000) %>% 
+  as.data.frame() %>% 
+  melt(id.vars = "n") %>% 
+  ggplot(aes(x = log(n), y = log(value), color = variable)) +
   geom_line() +
-  labs(title = "Variance")
+  labs(title = "Variances of mc estimates; 100 replications per value of n")
 
-p_mean <- comparison_df %>%
-  ggplot(aes(x = n, y = mean, color = weight)) +
-  geom_line() +
-  labs(title = "Mean")
-
-print(p_var)
-print(p_mean)
+print(p)
 
 ```
 
 
-## 3. 
+## 3 
 
 * Importance sampling with Uniform[0, 3] as the importance function (= non importance sampling?)
 
@@ -108,10 +133,10 @@ print(p_mean)
 x <- runif(10000, 0, 3)
 
 # f(x) = x
-(3 - 0)*x %>% mean
+normal_mc(1000, 0, 3, function(x) x)[1000]
 
 # f(x) = x^2
-(3 - 0)*x^2 %>% mean
+normal_mc(1000, 0, 3, function(x) x^2)[1000]
 
 ```
 
@@ -153,128 +178,52 @@ inv_AADD_CDF <- function(x) {
   return(y)
 }
 
-
-
-weighted_mc <- function(n = 1000, a, b, f, q, inv_cdf_q) {
-  
-  x <- runif(n)
-  X <- sapply(x, inv_cdf_q)
-  
-  w <- function(x) dunif(x, a, b)/q(x)
-  Y <- (b - a)*w(X)*f(X)
-  
-  c(mean = mean(Y), var = var(Y))
-}
-
-
-
-normal_mc <- function(n = 1000, a, b, func) {
-  x <- runif(n, a, b)
-  c(mean = (b-a)*mean(func(x)), var = var(func(x)))
-}
-
-
+n <- 1000
 
 # f(x) = x
-weighted_mc(10000, 0, 3,
+weighted_mc(n, 0, 3,
             f = function(x) x,
             q = function(x) AADD(x),
-            inv_cdf_q = function(x) inv_AADD_CDF(x))
+            inv_cdf_q = function(x) inv_AADD_CDF(x))[n]
 
 # f(x) = x^2
-weighted_mc(10000, 0, 3,
+weighted_mc(n, 0, 3,
             f = function(x) x^2,
             q = function(x) AADD(x),
-            inv_cdf_q = function(x) inv_AADD_CDF(x))
+            inv_cdf_q = function(x) inv_AADD_CDF(x))[n]
 ```
 
 
 ```{r}
 
-compare_estimates <- lapply(1000*c(1, 2, 5, 10, 20, 50, 100), function(n) {
-  
-  x <- runif(n, 0, 1)
-  
-  x_mc <- normal_mc(n, 0, 3, function(x) x)
-  x2_mc <- normal_mc(n, 0, 3, function(x) x^2)
-  
-  
-  x_aadd <- weighted_mc(10000, 0, 3,
-                               f = function(x) x,
-                               q = function(x) AADD(x),
-                               inv_cdf_q = function(x) inv_AADD_CDF(x))
-  x2_aadd <-  weighted_mc(10000, 0, 3,
-                               f = function(x) x^2,
-                               q = function(x) AADD(x),
-                               inv_cdf_q = function(x) inv_AADD_CDF(x))
-  
-  df <- rbind(x_mc, x2_mc, x_aadd, x2_aadd) %>% 
-    as.data.frame() %>% 
-    cbind(func = c("x", "x2", "x", "x2"),
-          method = c("normal", "normal", "weight", "weigth"),
-          n = rep(n, 4))
-    
-    
-  
-  
-  df
-  
-}) %>% 
-  do.call(rbind, .) 
+rep_normal_x <- replicate(100, normal_mc(1000, 0, 3, function(x) x)) %>% as.data.frame()
+rep_normal_x2 <- replicate(100, normal_mc(1000, 0, 3, function(x) x^2)) %>% as.data.frame()
+
+rep_weighted_x <- replicate(100, weighted_mc(1000, 0, 1, f = function(x) x, q = AADD, inv_cdf_q = inv_AADD_CDF)) %>% as.data.frame()
+rep_weighted_x2 <- replicate(100, weighted_mc(1000, 0, 1, f = function(x) x^2, q = AADD, inv_cdf_q = inv_AADD_CDF)) %>% as.data.frame()
 
 
-
-compare_estimates %>% 
-  filter(func == "x") %>% 
-  ggplot(aes(x = n, y = var, color = method)) +
+p <- cbind(var_normal = apply(rep_normal_x, 1, var),
+var_weighted = apply(rep_weighted_x, 1, var),
+n = 1:1000) %>% 
+  as.data.frame() %>% 
+  melt(id.vars = "n") %>% 
+  ggplot(aes(x = log(n), y = log(value), color = variable)) +
   geom_line() +
-  labs(title = "x variance")
+  labs(title = "Variances of mc estimates; f(x) = x; 100 replications per value of n")
 
-
-compare_estimates %>% 
-  filter(func == "x2") %>% 
-  ggplot(aes(x = n, y = var, color = method)) +
+p2<- cbind(var_normal = apply(rep_normal_x2, 1, var),
+var_weighted = apply(rep_weighted_x2, 1, var),
+n = 1:1000) %>% 
+  as.data.frame() %>% 
+  melt(id.vars = "n") %>% 
+  ggplot(aes(x = log(n), y = log(value), color = variable)) +
   geom_line() +
-  labs(title = "x2 variance")
+  labs(title = "Variances of mc estimates; f(x) = x^2; 100 replications per value of n")
 
-
-compare_estimates %>% 
-  filter(func == "x") %>% 
-  ggplot(aes(x = n, y = mean, color = method)) +
-  geom_line() +
-  labs(title = "x mean")
-
-compare_estimates %>% 
-  filter(func == "x2") %>% 
-  ggplot(aes(x = n, y = mean, color = method)) +
-  geom_line()+
-  labs(title = "x2 mean")
+print(p)
+print(p2)
 
 ```
 
-
-
-************************************************************
-************************************************************
-************************************************************
-************************************************************
-
-
-## DUMP
-```{r}
-
-
-weighted_mc <- function(n = 1000, f) {
-  
-  x <- runif(n)
-  X <- sapply(x, inv_AADD_CDF)
-  
-  w <- function(x) dunif(x, 0, 3)/AADD(x)
-  Y <- 3*w(X)*f(X)
-  
-  mean(Y)
-}
-
-
-```
 
