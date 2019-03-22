@@ -1,0 +1,130 @@
+---
+title: "demo3"
+author: "Ville Laitinen"
+date: "21 3 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(magrittr)
+```
+
+# Monte Carlo integration / importance sampling
+## 1 a)
+
+```{r}
+x <- runif(10000, 0, 1)
+
+exp(2*x) %>% mean
+```
+
+## 1 b)
+
+```{r}
+x <- runif(1000, 0, 2)
+
+(2 - 0)*exp(2*x) %>% mean
+```
+
+
+## 2 Importance sampling
+
+```{r}
+x <- runif(1000, 0, 1)
+
+
+inv_G <- function(x) -1*log(1 - x*(exp(1) - 1)/exp(1))
+g <- function(x) (exp(-x+1))/(exp(1)-1)
+f <- function(x) exp(-x^2)
+p <- function(x) dunif(x, 0, 1)
+
+# weight
+w <- function(x) p(x)/g(x)
+
+
+
+weighted_mc <- function(n = 1000) {
+  X <- inv_G(runif(n, 0, 1))
+  X <- X[X<=1]
+  Y <- w(X)*f(X)
+  c(mean = mean(Y), var = var(Y))
+}
+
+normal_mc <- function(n = 1000) {
+  x <- runif(n, 0, 1)
+  c(mean = mean(f(x)), var = var(f(x)))
+}
+
+print("Importance weighing mean and variance")
+weighted_mc()
+
+print("No importance weighing mean and variance")
+normal_mc()
+
+
+```
+
+
+* Compare variance as a function of n
+
+```{r}
+
+comparison_df <- lapply(1000*c(1, 2, 5, 10, 20, 50, 100), function(n) {
+  rbind(
+    c(n, weighted_mc(n)),
+    c(n, normal_mc(n))
+  ) %>% as.data.frame() %>% 
+    cbind(c("yes", "no"))
+  
+}) %>%
+  do.call(rbind, .) %>%
+  set_colnames(c("n", "mean", "var", "weight"))
+
+p_var <- comparison_df %>%
+  ggplot(aes(x = n, y = var, color = weight)) +
+  geom_line() +
+  labs(title = "Variance")
+
+p_mean <- comparison_df %>%
+  ggplot(aes(x = n, y = mean, color = weight)) +
+  geom_line() +
+  labs(title = "Mean")
+
+print(p_var)
+print(p_mean)
+
+```
+
+""
+## 3
+
+```{r}
+arm_AADD <- function(n) {
+  
+  # parameters
+  a <- 0
+  b <- 3
+  c <- 0.5
+  
+  # store samples
+  samples <- c()
+  
+  while(length(samples) < n) {
+    
+    x <- runif(1, a, b)
+    y <- runif(1, 0, c)
+    
+    if((x < 1 & y < .5*x) |
+       (x > 2 & y < .5 - .5*(x - 2)) |
+       (x < 2 & 1 < x & y < .5)) {
+      samples <- c(samples, x)
+    } 
+    
+  }
+  
+  return(samples)
+}
+```
+
