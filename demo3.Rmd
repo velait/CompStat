@@ -227,13 +227,28 @@ compare_estimates <- lapply(1000*c(1, 2, 5, 10, 20, 50, 100), function(n) {
 compare_estimates %>% 
   filter(func == "x") %>% 
   ggplot(aes(x = n, y = var, color = method)) +
-  geom_line()
+  geom_line() +
+  labs(title = "x variance")
 
 
 compare_estimates %>% 
   filter(func == "x2") %>% 
   ggplot(aes(x = n, y = var, color = method)) +
-  geom_line()
+  geom_line() +
+  labs(title = "x2 variance")
+
+
+compare_estimates %>% 
+  filter(func == "x") %>% 
+  ggplot(aes(x = n, y = mean, color = method)) +
+  geom_line() +
+  labs(title = "x mean")
+
+compare_estimates %>% 
+  filter(func == "x2") %>% 
+  ggplot(aes(x = n, y = mean, color = method)) +
+  geom_line()+
+  labs(title = "x2 mean")
 
 ```
 
