@@ -1,0 +1,282 @@
+---
+title: "demo4"
+author: "Ville Laitinen"
+date: "26 3 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(magrittr)
+library(reshape2)
+
+
+```
+
+
+# 1. Permutation testing
+## 1.1 Plant growth; Mann-Whitney U-test
+
+* Test groups
+
+```{r}
+
+data(PlantGrowth)
+
+g1 <- subset(PlantGrowth, group == "ctrl")
+g2 <- subset(PlantGrowth, group == "trt1")
+g3 <- subset(PlantGrowth, group == "trt2")
+
+```
+
+
+* Define U-test function
+
+```{r}
+
+# test statistic
+u_test <- function(x, y) {
+  df <- outer(x, y, FUN = function(x, y) ifelse(x > y,
+                                          1,
+                                          ifelse(x == y, .5, 0))
+  )
+  
+  sum(df)
+}
+
+
+# test
+x <- rnorm(50, 0, 1)
+y <- rnorm(25, 1, 2)
+u_test(x, y) + u_test(y, x) == length(x)*length(y)
+
+```
+
+
+```{r}
+
+# Null distribution
+u_null <- function(x, y, n = 10) {
+  
+  sapply(1:n, FUN = function(i) {
+    
+    xy <- c(x, y)
+    
+    rand_x <- sample(xy, length(x), replace = FALSE)
+    rand_y <- xy[!(xy %in% rand_x)]
+    
+    u_test(rand_x, rand_y)
+  })
+  
+}
+  
+
+mann_whitney <- function(x, y, two_tailed = FALSE,  null_n = 10000, null_dist = NULL) {
+ 
+  if(is.null(null_dist)) {
+    null_dist <- u_null(x, y, n = null_n)
+  }
+  
+  p <- min(mean(u_test(x, y) > null_dist),
+           mean(u_test(x, y) < null_dist))
+  
+  if(two_tailed) {
+    p <- 2*p
+  } 
+  
+  return(p)
+}
+
+
+```
+
+
+* Compare to R's ```wilcox.test```
+
+```{r}
+
+true_values <- c(wilcox.test(g1$weight, g2$weight, alternative = "two.sided")$p.value,
+                 wilcox.test(g1$weight, g3$weight, alternative = "two.sided")$p.value)
+
+
+null_n <- 10000
+null_distributions <- cbind(u_null(g1$weight, g2$weight, null_n),
+                            u_null(g1$weight, g3$weight, null_n))
+
+p_values <- sapply(1:null_n, FUN = function(i) {
+
+  c(mann_whitney(g1$weight, g2$weight, two_tailed = TRUE,  null_dist = null_distributions[1:i, 1]),
+  mann_whitney(g1$weight, g3$weight, two_tailed = TRUE, null_dist = null_distributions[1:i, 2]))
+  
+}) %>% 
+  t %>% 
+  as.data.frame() %>% 
+  cbind(1:null_n) %>% 
+  set_colnames(c("p1", "p2", "n"))
+
+p <- p_values %>% 
+  melt(id.vars = "n") %>% 
+  ggplot(aes(x = n, y = value, color = variable)) +
+  geom_line() +
+  geom_hline(yintercept = true_values[1], linetype = "dashed", color = "#F8766D")+
+  geom_hline(yintercept = true_values[2], linetype = "dashed", color = "#00A087B2")
+
+print(p)
+
+```
+
+
+* Test with only 4 observations per group
+
+```{r}
+
+g1_4 <- sample(g1$weight, 4)
+g2_4 <- sample(g2$weight, 4)
+g3_4 <- sample(g3$weight, 4)
+
+null_distributions2 <- cbind(u_null(g1_4, g2_4, null_n),
+                            u_null(g1_4, g3_4, null_n))
+
+
+# p-values
+c(mann_whitney(g1_4, g2_4, null_dist = null_distributions2[, 1]),
+  mann_whitney(g1_4, g3_4, null_dist = null_distributions2[, 2]))
+
+```
+
+* Null distribution histograms
+
+```{r}
+
+null_distributions2 %>% 
+  as.data.frame() %>% 
+  melt() %>% 
+  ggplot(aes(x = value)) +
+  geom_histogram(position = "dodge", binwidth = 1) +
+  facet_wrap(~variable)
+
+```
+
+
+ 
+* It is ok to compute two-tailed p = 2*one-tailed p, since we are interested in wether a treatment group grows better _or_ worse than control.
+ 
+ 
+ 
+ 
+## 1.2 Titanic; Chi squared-test
+
+
+
+```{r}
+
+# Edit data to pleasing shape
+titan_table <- Titanic %>%
+  as.data.frame() %>% 
+  select(-Class) %>%
+  group_by(Survived, Sex, Age) %>%
+  summarize(sum = sum(Freq)) %>% 
+  as.data.frame() %>% 
+  ungroup()
+
+titan_table
+```
+
+* Form Chi squared function
+
+```{r}
+
+# Chi squared statistic
+chi_sq_statistic <- function(table) {
+  
+  if(dim(table)[1] != 2 & dim(table)[2] != 2) {
+    stop("Invalid confingency table")
+  }
+  
+  a <- table[1, 1]
+  b <- table[1, 2]
+  c <- table[2, 1]
+  d <- table[2, 2]
+  
+  statistic <- ((a*d - b*c)^2)*(sum(table))/( (a+b)*(c+d)*(b+d)*(a+c) )
+  
+  return(statistic)
+}
+
+# Null distribution
+chi_sq_null <- function(table, n = 100) {
+  
+  N <- sum(table)
+  
+  null_dist <- c()
+  
+  for(i in 1:n) {
+    
+    a <- sample(1:N, 1)
+    b <- sample(1:(N - a), 1)
+    c <- sample(1:(N - a- b), 1)
+    d <- N - a - b - c
+    
+    null_dist <- c(null_dist,  chi_sq_statistic(matrix(c(a, b, c, d), 2, 2, byrow = TRUE)))
+  }
+  
+  null_dist <- null_dist[is.finite(null_dist)]
+  
+  return(null_dist)
+}
+
+# Test against null
+chi_sq_test <- function(table, null_dist = NULL, n = 100) {
+  
+  if(is.null(null_dist)) {
+    null_dist <- chi_sq_null(table, n)
+  }
+  
+  chi_sq <- chi_sq_statistic(table)
+  
+  p <- mean(null_dist >= chi_sq)
+  
+  return(p)
+
+}
+
+```
+
+
+* Test effect of age on survival
+
+```{r}
+age_df <- titan_table %>% 
+  select(-Sex) %>%
+  group_by(Age, Survived) %>%
+  summarize(sum = sum(sum)) %>% 
+  ungroup() %>% 
+  spread(Age, sum) %>% 
+  as.data.frame() %>%
+  column_to_rownames(var="Survived")
+
+chi_sq_test(age_df, n = 1000)
+
+```
+ 
+ 
+* Age seems independent of survival. Test effect of Sex.
+
+```{r}
+sex_df <- titan_table %>% 
+  select(-Age) %>%
+  group_by(Sex, Survived) %>%
+  summarize(sum = sum(sum)) %>% 
+  ungroup() %>% 
+  spread(Sex, sum) %>% 
+  as.data.frame() %>%
+  column_to_rownames(var="Survived")
+
+chi_sq_test(sex_df, n = 10000)
+
+```
+
+* Sex as well independent.
+ 
