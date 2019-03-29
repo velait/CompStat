@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+
 knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
@@ -63,9 +64,14 @@ u_null <- function(x, y, n = 10) {
   sapply(1:n, FUN = function(i) {
     
     xy <- c(x, y)
+    N <- length(xy)
     
-    rand_x <- sample(xy, length(x), replace = FALSE)
-    rand_y <- xy[!(xy %in% rand_x)]
+    
+    x_ind <- sample(1:N, length(x), replace =FALSE) 
+    y_ind <- !(1:N %in% x_ind)
+    
+    rand_x <- xy[x_ind]
+    rand_y <- xy[y_ind]
     
     u_test(rand_x, rand_y)
   })
@@ -160,11 +166,11 @@ null_distributions2 %>%
 ```
 
 
+* Poor resolution.
  
-* It is ok to compute two-tailed p = 2*one-tailed p, since we are interested in wether a treatment group grows better _or_ worse than control.
- 
- 
- 
+* It is ok to compute two-tailed p = 2*one-tailed p, since we are interested in wether a treatment group grows better _or_ worse than control and because the distribution is symmetric.
+
+
  
 ## 1.2 Titanic; Chi squared-test
 
@@ -182,6 +188,8 @@ titan_table <- Titanic %>%
   ungroup()
 
 titan_table
+
+
 ```
 
 * Form Chi squared function
@@ -214,9 +222,10 @@ chi_sq_null <- function(table, n = 100) {
   
   for(i in 1:n) {
     
+    
     a <- sample(1:N, 1)
     b <- sample(1:(N - a), 1)
-    c <- sample(1:(N - a- b), 1)
+    c <- sample(1:(N - a - b), 1)
     d <- N - a - b - c
     
     null_dist <- c(null_dist,  chi_sq_statistic(matrix(c(a, b, c, d), 2, 2, byrow = TRUE)))
@@ -257,7 +266,7 @@ age_df <- titan_table %>%
   as.data.frame() %>%
   column_to_rownames(var="Survived")
 
-chi_sq_test(age_df, n = 1000)
+chi_sq_test(age_df, n = 10000)
 
 ```
  
@@ -274,7 +283,7 @@ sex_df <- titan_table %>%
   as.data.frame() %>%
   column_to_rownames(var="Survived")
 
-chi_sq_test(sex_df, n = 10000)
+chi_sq_test(sex_df, n = 1000)
 
 ```
 
