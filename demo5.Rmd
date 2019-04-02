@@ -1,0 +1,173 @@
+---
+title: "demo5"
+author: "Ville Laitinen"
+date: "2 4 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(tidyverse)
+```
+
+
+# 1. 
+
+* Data
+```{r}
+
+df1 <- data.frame(yes = c(92, 161), no = c(108, 22)) %>% 
+  set_rownames(c("A", "B"))
+
+df1
+```
+
+* Odds ratio
+
+```{r}
+
+odds_ratio <- function(df) {
+  
+  r <- (df["B", "yes"]/df["B", "no"])/(df["A", "yes"]/df["A", "no"])
+  
+  r
+}
+
+OR = odds_ratio(df1)
+
+OR
+
+```
+
+* Bootstrap
+
+```{r}
+
+group_A <- c(rep("yes", 92), rep("no", 108))
+group_B <- c(rep("yes", 161), rep("no", 22))
+
+boot_OR <- replicate( 
+  rbind(
+  sample(group_A, size = length(group_A), replace = TRUE) %>% 
+  table,
+  sample(group_B, size = length(group_B), replace = TRUE) %>% 
+  table
+  ) %>% 
+  as.data.frame() %>% 
+  set_rownames(c("A", "B")) %>% 
+  odds_ratio(),
+  n = 10000)
+
+```
+
+
+* 95% confidence interval
+
+```{r}
+quantile(boot_OR, probs = c(.025, .975))
+```
+
+* Bias
+
+
+
+# 2. 
+
+* Load data
+
+```{r}
+load("gas.RData")
+
+head(gas)
+```
+
+* Scatter plot
+
+```{r}
+
+p <- gas %>% 
+  ggplot(aes(x = EqRatio, y = NOx)) +  
+  geom_point()
+
+print(p)
+
+```
+
+
+* Fit splines
+
+```{r}
+
+splines <- smooth.spline(x = gas$EqRatio, y = gas$NOx, spar = 0.7)
+
+p <- ggplot() + 
+  geom_point(aes(x = gas$EqRatio, y = gas$NOx)) + 
+  geom_point(aes(x = splines$x, y = splines$y), color = "red") + 
+  geom_line(aes(x = splines$x, y = splines$y), color = "red")
+
+p
+
+```
+
+
+* Bootstrap for uncertainty
+
+```{r}
+
+
+boot_splines <- lapply(1:1000, function(i) {
+  
+  df <- gas[sample(1:nrow(gas), nrow(gas), replace = TRUE), ]
+    
+  sp <- smooth.spline(x = df$EqRatio, y = df$NOx, spar = 0.7)
+  
+  data.frame(x = sp$x, y = sp$y, n = i)
+}
+) %>% 
+  do.call(rbind, .)
+ 
+
+p <- ggplot() + 
+  geom_line(data = boot_splines, aes(x = x, y = y, group = n), alpha = 0.25, color = "chocolate") +
+  geom_point(data = gas, aes(x = EqRatio, y = NOx), size = 1) +
+  geom_line(aes(x = splines$x, y = splines$y))
+
+p
+
+```
+
+* Parametric bootstrap
+
+```{r}
+
+std <- residuals(splines) %>% sd
+mean <- residuals(splines) %>% mean 
+
+
+# For each draw add to fit mean and compute splines
+par_boot_splines <- lapply(1:1000, function(i) {
+  
+  res <- rnorm(length(splines$x), mean, std)
+  
+  boot_y <- splines$y + res
+  
+  sp <- smooth.spline(x = splines$x, y = boot_y, spar = 0.7)
+  
+  data.frame(x = sp$x, y = sp$y, n = i)
+  
+}) %>% 
+  do.call(rbind, .)
+
+
+
+p <- ggplot() + 
+  geom_line(data = par_boot_splines, aes(x = x, y = y, group = n), alpha = 0.25, color = "chocolate") +
+  geom_point(data = gas, aes(x = EqRatio, y = NOx), size = 1) +
+  geom_line(aes(x = splines$x, y = splines$y))
+
+p
+
+
+```
+

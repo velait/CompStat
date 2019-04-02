@@ -257,7 +257,7 @@ chi_sq_test <- function(table, null_dist = NULL, n = 100) {
 * Test effect of age on survival
 
 ```{r}
-age_df <- titan_table %>% 
+  age_df <- titan_table %>% 
   select(-Sex) %>%
   group_by(Age, Survived) %>%
   summarize(sum = sum(sum)) %>% 
