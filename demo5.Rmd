@@ -9,6 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(magrittr)
 library(tidyverse)
+theme_set(theme_bw(20))
 ```
 
 
@@ -70,9 +71,75 @@ quantile(boot_OR, probs = c(.025, .975))
 
 * Bias
 
+```{r}
+
+mean(boot_OR - OR)
+
+```
+
+* Bootstrap slightly biased
+
+* Plot estimate and CIs
+
+```{r}
+
+p <- ggplot() + 
+  geom_histogram(aes(x = boot_OR)) +
+  geom_vline(xintercept = OR) +
+  geom_vline(xintercept = quantile(boot_OR, probs = c(.025, .975)), linetype = "dashed")
+
+p
+
+```
+
+
+### Compare confidencde intervals
+
+* Normal approximation 
+
+```{r}
+
+# Normal approximation
+norm_mean <- boot_OR %>% mean
+norm_sd <- boot_OR %>% sd
+
+qnorm(p = c(.025, .975), norm_mean, norm_sd)
+
+```
+
+* Basic CI
+
+```{r}
+c(2*OR - quantile(boot_OR, probs = c((1 - (1 - .95))/2)),
+  2*OR - quantile(boot_OR, probs = c((1 - .95))/2)) %>% 
+  set_names(c("2.5%", "97.5%"))
+```
+
+
+* Bias corrected accelerated 
+
+```{r}
+
+# Edit df
+long_df <- data.frame(group = c(rep("A", 200),
+                     rep("B", 183)), answer = c(rep("yes", 92),
+                                                rep("no", 108),
+                                                rep("yes", 161),
+                                                rep("no", 22)))
+
+boot(long_df, statistic = function(df, ind) {
+  odds_ratio(df[ind, ])
+},
+R = 1000
+)
+
+```
+
 
 
 # 2. 
+
+## a)
 
 * Load data
 
@@ -102,8 +169,7 @@ print(p)
 splines <- smooth.spline(x = gas$EqRatio, y = gas$NOx, spar = 0.7)
 
 p <- ggplot() + 
-  geom_point(aes(x = gas$EqRatio, y = gas$NOx)) + 
-  geom_point(aes(x = splines$x, y = splines$y), color = "red") + 
+  geom_point(data = gas, aes(x = EqRatio, y = NOx)) + 
   geom_line(aes(x = splines$x, y = splines$y), color = "red")
 
 p
@@ -137,7 +203,7 @@ p
 
 ```
 
-* Parametric bootstrap
+## b) Parametric bootstrap
 
 ```{r}
 
@@ -171,3 +237,5 @@ p
 
 ```
 
+
+* Parametric bootstrap produces smoother and more narrow confidence intervals. 
