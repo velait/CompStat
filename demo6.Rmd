@@ -1,0 +1,146 @@
+---
+title: "Demo6"
+author: "Ville Laitinen"
+date: "11 4 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(ggplot2)
+library(reshape2)
+library(tidyverse)
+theme_set(theme_bw(20))
+```
+
+
+# 1. Tiger jackknife
+
+```{r}
+# Load data
+
+load(file = "tigers.RData")
+
+dim(tigers)
+```
+
+
+* Jackknife resampling
+
+```{r}
+
+jk_N <- sapply(1:nrow(tigers), FUN = function(i) {
+  df <- tigers[-i, ]
+  
+  sapply(i:ncol(df), FUN = function(j) {
+    any(df[, j] == 1)
+  }) %>% sum
+})
+
+jk_N
+
+```
+
+* Jackknife bias
+
+```{r}
+bias <- (10 - 1)*(mean(jk_N) - 26)
+
+bias
+```
+
+
+* Bias corrected estimate
+
+```{r}
+10*26 - (10 - 1)*mean(jk_N)
+```
+
+
+# 2. Gas cross-validation
+
+```{r}
+# Load data
+load("gas.RData")
+
+head(gas)
+```
+
+* 2-fold cross-validation
+
+```{r}
+
+# Divide into training and test tests
+train_rows <- sample(1:nrow(gas), size = nrow(gas)/2, replace = FALSE)
+
+train <- gas[train_rows, ]
+test <- gas[-train_rows, ] 
+
+# Average over identical EqRatio values in train set
+  train <- train %>%
+    group_by(EqRatio) %>% 
+    mutate(meanNOx = mean(NOx)) %>% 
+    ungroup() %>% 
+    arrange(EqRatio)
+
+
+spar <- seq(from = 0, to = 1.5, by = 0.01)
+
+mse_df <- lapply(spar, FUN = function(s) {
+  
+  # Fit splines
+  train_splines <- smooth.spline(x = train$EqRatio, y = train$NOx, spar = s)
+  
+  # Predict in test set
+  test_predict <- predict(train_splines, x=test$EqRatio)$y
+  
+  
+  
+  
+    
+  
+  mse <- c(test = mean((test_predict - test$NOx)^2),
+           train =  mean((train_splines$y - distinct(train %>% select(-NOx))$meanNOx)^2), 
+           spar = s)
+  
+}) %>%
+  do.call(rbind, .) %>% 
+  as.data.frame()
+
+
+```
+
+
+* Plot
+
+```{r}
+
+mse_df  %>% 
+  melt(id.vars = "spar") %>% 
+  ggplot(aes(x = spar, y = value, color = variable)) +
+  geom_line() +
+  labs(y = "MSE")
+
+```
+
+
+* There is an optimal range for spar in which the fit in test set is good. Spar values below/above this range result in over/underfitting. Overfitting naturally doesn't happen in training set. 
+
+
+* Fit to entire data with optimal spar: 
+
+```{r}
+
+optimal_spar <- mse_df[which.min(mse_df$test), "spar"]
+
+splines <- smooth.spline(x = gas$EqRatio, y = gas$NOx, spar = optimal_spar)
+
+p <- ggplot() + 
+  geom_point(data = gas, aes(x = EqRatio, y = NOx)) + 
+  geom_line(aes(x = splines$x, y = splines$y), color = "red")
+
+p
+
+```
+

@@ -116,22 +116,22 @@ c(2*OR - quantile(boot_OR, probs = c((1 - (1 - .95))/2)),
 ```
 
 
-* Bias corrected accelerated 
+* Bias corrected accelerated (wasn't able to make this one work..)
 
 ```{r}
 
-# Edit df
-long_df <- data.frame(group = c(rep("A", 200),
-                     rep("B", 183)), answer = c(rep("yes", 92),
-                                                rep("no", 108),
-                                                rep("yes", 161),
-                                                rep("no", 22)))
-
-boot(long_df, statistic = function(df, ind) {
-  odds_ratio(df[ind, ])
-},
-R = 1000
-)
+# # Edit df
+# long_df <- data.frame(group = c(rep("A", 200),
+#                      rep("B", 183)), answer = c(rep("yes", 92),
+#                                                 rep("no", 108),
+#                                                 rep("yes", 161),
+#                                                 rep("no", 22)))
+# 
+# boot(long_df, statistic = function(df, ind) {
+#   odds_ratio(df[ind, ])
+# },
+# R = 1000
+# )
 
 ```
 
@@ -139,7 +139,7 @@ R = 1000
 
 # 2. 
 
-## a)
+## a) Regular bootstrap 
 
 * Load data
 
