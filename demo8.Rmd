@@ -1,0 +1,221 @@
+---
+title: "Demo8"
+author: "Ville Laitinen"
+date: "7 5 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(tidyverse)
+library(mcmc)
+library(reshape2)
+theme_set(theme_bw(20))
+```
+
+
+# 1. Gibbs
+
+```{r}
+# Function for the conditional density p(x|y)
+rcon <- function(x) rnorm(1, 2/(x^2 + 1), 1/(x^2 + 1))
+
+# Gibbs sampler
+
+gibbs1 <- function(inits, n) {
+  
+  # Matrix for samples
+  samples <- matrix(NA, n+1, 2)
+  
+  # Store initial values
+  samples[1, ] <- inits
+  
+  
+  for(i in 1:n) {
+    x <- rcon(samples[i, 2])
+    y <- rcon(x)
+    
+    samples[i+1, ] <- c(x, y)
+  }
+  
+  # Remove initial values
+  samples <- samples[2:(n+1), ]
+  
+  colnames(samples) <- c("x", "y")
+  
+  return(samples)
+}
+
+```
+
+### Sample
+
+```{r}
+
+samples1 <- gibbs1(c(3, 3), 50000)
+
+```
+
+### Visualize
+
+```{r}
+
+p <- samples1 %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x = x, y = y)) +
+  stat_density_2d(aes(fill = ..level..), geom = "polygon")
+  
+
+print(p)
+
+```
+
+### Hmm I expected this to be symmetric.. Let's see how reversing the sampling order of coordinates affects the situation.
+
+```{r}
+gibbs2 <- function(inits, n) {
+  
+  # Matrix for samples
+  samples <- matrix(NA, n+1, 2)
+  
+  # Store initial values
+  samples[1, ] <- inits
+  
+  
+  for(i in 1:n) {
+
+    y <- rcon(samples[i, 1])
+    x <- rcon(y)
+    
+    
+    samples[i+1, ] <- c(x, y)
+  }
+  
+  # Remove initial values
+  samples <- samples[2:(n+1), ]
+  
+  colnames(samples) <- c("x", "y")
+  
+  return(samples)
+}
+```
+
+
+
+```{r}
+
+samples2 <- gibbs2(c(3, 3), 50000)
+
+
+p <- samples2 %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x = x, y = y)) +
+  stat_density_2d(aes(fill = ..level..), geom = "polygon")
+  
+
+print(p)
+
+```
+
+### There is clear bias depending on the sampling order.
+
+
+# 2. Gibbs for Bayes
+
+```{r}
+
+# Hyperparameters
+m <- 0
+s2 <- 100
+a <- 1
+b <- 1
+
+m_star <- function(data, s2, m, sigma2) (s2^(-1)*m + length(data)*sigma2^(-1)*mean(data))/(s2^(-1) + length(data)*sigma2^(-1))
+s2_star <- function(data, s2, sigma2) 1/(s2^(-1) + length(data)*sigma2^(-1))
+a_star <- function(data, a) a + length(data)/2
+b_star <- function(data, mu, b) sum((data - mu)^2)/2 + b
+
+
+normal_gibbs <- function(data, inits, m, s2, a, b, N) {
+  
+  # mu, sigma^2
+  samples <- matrix(NA, N+1, 2)
+  samples[1, ] <- inits
+  
+  for(i in 1:N) {
+    
+    mu <- rnorm(1, m_star(data, s2, m, samples[i, 2]), s2_star(data, s2, samples[i, 2]))
+    sigma2 <- rgamma(1, a_star(data, a), b_star(data, mu, b))
+   
+    samples[i+1, ] <- c(mu, sigma2)
+     
+  }
+  
+  
+  samples <- samples[2:(N+1), ]
+  
+  colnames(samples) <- c("mu", "sigma2")
+  
+  samples
+}
+
+
+```
+
+
+
+### Test function
+
+```{r}
+
+# mu = 0, sigma^2 = 1
+normal_data <- rnorm(100, 0, 1)
+normal_samples <- normal_gibbs(normal_data, c(1, 2), m, s2, a, b, 10000)
+
+
+p <- normal_samples %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x = mu, y = sigma2)) + 
+  geom_point() + 
+  geom_point(aes(x = 0, y = 1), color = "red", size = 5) +
+  geom_point(aes(x = mean(normal_data), y = var(normal_data)), color = "blue", size = 5) +
+  labs(subtitle = "Blue = empirical mean and variance, Red = Gibbs estimate")
+
+print(p)
+
+```
+
+
+### Iris data
+
+```{r}
+
+sepal_samples <- normal_gibbs(iris$Sepal.Length, c(0, 1), m, s2, a, b, 10000)
+
+p <- sepal_samples %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x = mu, y = sigma2)) + 
+  geom_point()
+
+print(p)
+
+```
+
+
+### Posterior marginals
+
+```{r}
+
+p_marginal <- sepal_samples %>% 
+  as.data.frame() %>%
+  melt() %>% 
+  ggplot(aes(x = value)) + 
+  stat_density(geom = "line") +
+  facet_wrap(~variable, scales = "free") +
+  labs(title = "Posterior marginal distributions")
+
+print(p_marginal)
+
+```
+
