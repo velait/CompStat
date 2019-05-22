@@ -1,0 +1,415 @@
+---
+title: "Harjoitustyo"
+author: "Ville Laitinen"
+date: "8 5 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(tidyverse)
+library(cowplot)
+library(reshape2)
+theme_set(theme_bw(20))
+```
+
+
+## Data
+
+
+# 1. Likelihood and joint posterior density
+
+```{r}
+
+LL <- function(data, mu, lambda) {
+  
+  N <- length(data)
+  
+  
+  ll <- log(mu[1])*(sum(data[1:lambda])) + 
+    log(mu[2])*(sum(data[(lambda+1):N])) -
+    lambda*mu[1] - (N-lambda)*mu[2]
+  
+  return(ll)
+  
+}
+
+
+```
+
+## Simulate data from the model
+
+```{r}
+
+N <- 200
+lambda <- 100
+mu <- c(5, 20)
+
+sim_data <- c(rpois(lambda, mu[1]), rpois(N - lambda, mu[2]))
+
+
+data.frame(y = sim_data, x = 1:N) %>%
+  ggplot(aes(x = x, y = y)) +
+  geom_vline(xintercept = lambda, color = "red", linetype = "dashed") +
+  geom_point()
+  
+
+```
+
+
+<!-- # ```{r} -->
+<!-- # -->
+<!-- # df <- lapply(1:25, function(i) { -->
+<!-- #   lapply(1:25, function(j) { -->
+<!-- # -->
+<!-- #     LL(data, mu = c(i, j), 150) -->
+<!-- # -->
+<!-- #   }) %>% unlist %>% -->
+<!-- #     cbind(value = ., mu1 = i, mu2 = 1:25) -->
+<!-- # }) %>% do.call(rbind, .) -->
+<!-- # -->
+<!-- # -->
+<!-- # df <- lapply(1:25, function(i) { -->
+<!-- #   lapply(1:200, function(j) { -->
+<!-- # -->
+<!-- #     LL(data, mu = c(i, 15), j) -->
+<!-- # -->
+<!-- #   }) %>% unlist %>% -->
+<!-- #     cbind(value = ., mu1 = i, mu2 = 1:200) -->
+<!-- # }) %>% do.call(rbind, .) -->
+<!-- # -->
+<!-- # -->
+<!-- # ``` -->
+<!-- # -->
+
+
+
+
+## Posterior 
+
+
+<!-- ## Maximize likelihood -->
+
+<!-- ```{r} -->
+
+<!-- mle <- function(x) { -->
+
+<!--   mu1 <- x[1] -->
+<!--   mu2 <- x[2] -->
+<!--   lambda <- x[3] -->
+
+<!--   LL(sim_data, c(mu1, mu2), lambda) -->
+
+<!-- } -->
+
+<!-- optim(c(1, 1, 100), -->
+<!--       mle, -->
+<!--       lower = c(2, 2, 100), -->
+<!--       upper = c(10, 50, 100), -->
+<!--       method = "L-BFGS-B") -->
+
+<!-- ``` -->
+
+
+
+# 2. Full conditional densities
+
+```{r}
+
+r_mu1_cond <- function(data, mu2, lambda, alpha, beta) {
+  
+  shape <- sum(data[1:lambda]) + alpha[1] 
+  rate <- lambda + beta[1]
+  
+  rgamma(1, shape = shape, rate = rate)
+
+}
+
+r_mu2_cond <- function(data, mu1, lambda, alpha, beta) {
+  
+  N <- length(data)
+  
+  # if lambda == last time points, there can be no change point
+  # in this case return a sample from prior
+  if(lambda == N) {
+    return(rgamma(1, alpha[2], beta[2]))
+  }
+  
+  shape <- sum(data[(lambda+1):length(data)]) + alpha[2] 
+  rate <- N - lambda + beta[2]
+  
+  rgamma(1, shape = shape, rate = rate)
+}
+
+r_lambda_cond <- function(data, mu, alpha, beta) {
+
+  N <- length(data)
+  
+  
+  # Implement in log scale to avoid overflow
+  c_log_mu <- sapply(1:N, FUN = function(i)  {
+    
+    (sum(data[1:i]) + alpha[1] - 1)*log(mu[1]) + ifelse(i == N, 0, (sum(data[(i+1):N]) + alpha[2] - 1)*log(mu[2]))
+    
+  }
+  )
+  
+  
+  unnormalized_log_density <- c_log_mu -
+    (beta[1]*mu[1] + N*mu[2] + beta[2]*mu[2]) +
+    (mu[2] - mu[1])*(1:N)  
+  
+  
+  # Rescale and exp transform to normal scale
+  density <- (unnormalized_log_density - 
+    max(unnormalized_log_density) )%>% 
+    exp
+  
+  # Normalize
+  density <- density/sum(density)
+  
+  # Cumulative density
+  cdf <- density %>% cumsum
+  
+  min(which(runif(1) <= cdf))
+  
+}
+
+```
+
+
+```{r}
+max_lambda_cond <- function(data, mu, alpha, beta) {
+
+  N <- length(data)
+  
+  
+  # Implement in log scale to avoid overflow
+  c_log_mu <- sapply(1:N, FUN = function(i)  {
+    
+    (sum(data[1:i]) + alpha[1] - 1)*log(mu[1]) + ifelse(i == N, 0, (sum(data[(i+1):N]) + alpha[2] - 1)*log(mu[2]))
+    
+  }
+  )
+  
+  
+  
+  unnormalized_log_density <- c_log_mu -
+    (beta[1]*mu[1] + N*mu[2] + beta[2]*mu[2]) +
+    (mu[2] - mu[1])*(1:N)  
+  
+  log_density <- unnormalized_log_density/sum(unnormalized_log_density)
+  
+  which.max(log_density)
+  
+  
+  
+}
+
+
+
+xx <- lapply(seq(from = 1, to = 100, length.out = 100), function(i) {
+  lapply(seq(from = 1, to = 100, length.out = 100), function(j) {
+    max_lambda_cond(data, c(i, j), alpha, beta)
+    }) %>% unlist %>% cbind(j = 1:100, i = i)
+  }) %>% do.call(rbind, .)
+
+
+xx <- xx %>% set_colnames(c("max_lambda", "mu2", "mu1"))
+
+
+p <- xx %>% as.data.frame() %>% ggplot(aes(x = mu1, y = mu2, fill = max_lambda)) + geom_tile()
+
+p
+print(p)
+
+```
+
+
+
+## Gibbs
+
+```{r}
+
+gibbs <- function(data, alpha, beta, inits = "random", n, burn_in = 0.25, keep = .5) {
+  
+  # Random initialization unless supplied in the function call
+  if(inits == "random") {
+    inits <- c(runif(2, 1, max(data)), runif(1, 1, N))
+  }
+  
+  samples <- matrix(NA, n, 3) %>% 
+    set_colnames(c("lambda", "mu1", "mu2"))
+    
+  samples[1, ] <- inits
+  
+  for(i in 2:n) {
+    
+    
+    samples[i, "lambda"] <- r_lambda_cond(data = data,
+                                          mu = samples[i-1, c("mu1", "mu2")],
+                                          alpha = alpha,
+                                          beta = beta)
+    
+    samples[i, "mu1"] <- r_mu1_cond(data = data,
+                                    mu2 = samples[i-1, "mu2"],
+                                    lambda = samples[i, "lambda"],
+                                    alpha = alpha,
+                                    beta = beta)
+    
+    samples[i, "mu2"] <- r_mu2_cond(data = data,
+                                    mu1 = samples[i, "mu1"],
+                                    lambda = samples[i, "lambda"],
+                                    alpha = alpha,
+                                    beta = beta)
+    
+  }
+  
+  # Remove burn-in
+  samples <- samples[(round(nrow(samples)*burn_in) + 1):n, ]
+  
+  # thin
+  samples <- samples[sample(1:nrow(samples), size = round(keep*nrow(samples))), ]
+  
+  return(samples)
+  
+}
+
+```
+
+
+# 3. Validate model with simulations
+
+```{r}
+# Hyperpriors
+alpha <- c(2, 2)
+beta <- c(0.25, 0.25)
+
+
+N <- 200
+lambda <- 100
+mu <- c(5, 10)
+
+sim_data <- c(rpois(lambda, mu[1]), rpois(N - lambda, mu[2]))
+
+
+sim_samples <- gibbs(data = sim_data, 
+      alpha = alpha, 
+      beta = beta,
+      inits = "random",
+      n = 10000,
+      burn_in = 0.5, 
+      keep = 1)
+
+sim_samples <- sim_samples %>% as.data.frame()
+
+```
+
+* The estimates are concentrated around the true values (see below). 
+
+```{r, echo = FALSE}
+
+
+
+p_lambda <- sim_samples %>% 
+  ggplot(aes(x = lambda)) + 
+  stat_density(geom = "line") + 
+  geom_vline(xintercept = lambda, linetype = "dashed") + 
+  labs(x = "Value", y = "Density", title = "Lambda")
+
+
+p_mu1 <- sim_samples %>% 
+  ggplot(aes(x = mu1)) + 
+  stat_density(geom = "line") + 
+  geom_vline(xintercept = mu[1], linetype = "dashed") + 
+  labs(x = "Value", y = "Density", title = "Mu1")
+
+p_mu2 <- sim_samples %>% 
+  ggplot(aes(x = mu2)) + 
+  stat_density(geom = "line") + 
+  geom_vline(xintercept = mu[2], linetype = "dashed") + 
+  labs(x = "Value", y = "Density", title = "Mu2")
+
+
+p <- plot_grid(p_lambda, p_mu1, p_mu2, ncol = 1)
+
+print(p)
+
+```
+
+
+* Below data with posterior mode and 75% quantiles for the inferred change point. 
+
+```{r, echo = FALSE}
+p <- data.frame(value = sim_data, x = 1:length(sim_data)) %>% 
+  ggplot() + 
+  geom_point(aes(y = value, x = x)) + 
+  geom_vline(xintercept = which.max(sim_samples[, 1] %>% table) %>% 
+               names %>%
+               as.numeric(), color = "red") + 
+  geom_vline(xintercept = quantile(sim_samples[, 1], probs = c(.25, .75)), color = "red", linetype = "dashed")
+```
+
+
+
+# 4. Real data
+
+Let us know test our change point detector on data with unknown parameters.
+
+```{r}
+
+data <- c(4, 4, 3, 1, 3, 2, 1, 0, 11, 11, 12, 4, 4, 7, 9, 6, 9, 12, 13, 15, 12, 10, 10, 6, 6, 7, 12, 11, 
+          15, 5, 11, 8, 11, 7, 11, 12, 14, 12, 8, 11, 9, 10, 6, 14, 14, 8, 4, 7, 10, 3, 14, 10, 17, 7,
+          16, 9, 12, 11, 7, 11, 5, 11, 13, 9, 7, 9, 7, 11, 12, 13, 6, 9, 10, 13, 8, 18, 6, 16, 8, 4, 16, 
+          8, 9, 5, 7, 9, 10, 11, 13, 12, 9, 11, 7, 9, 6, 7, 6, 11, 8, 5)
+
+samples <- gibbs(data = data, 
+      alpha = alpha, 
+      beta = beta,
+      inits = "random",
+      n = 10000,
+      burn_in = 0.5, 
+      keep = 1)
+
+```
+
+
+
+* Plot estimates
+
+```{r}
+samples <- samples %>% as.data.frame()
+
+p_lambda <- samples %>% 
+  ggplot(aes(x = lambda)) + 
+  stat_density(geom = "line") + 
+  labs(x = "Value", y = "Density", title = "Lambda")
+
+
+p_mu1 <- samples %>% 
+  ggplot(aes(x = mu1)) + 
+  stat_density(geom = "line") + 
+  labs(x = "Value", y = "Density", title = "Mu1")
+
+p_mu2 <- samples %>% 
+  ggplot(aes(x = mu2)) + 
+  stat_density(geom = "line") + 
+  labs(x = "Value", y = "Density", title = "Mu2")
+
+
+p <- plot_grid(p_lambda, p_mu1, p_mu2, ncol = 3)
+
+print(p)
+```
+
+
+
+```{r}
+samples %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x = lambda)) + 
+  stat_density(geom = "line")
+  
+```
+
