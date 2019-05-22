@@ -1,0 +1,271 @@
+---
+title: "demo7"
+author: "Ville Laitinen"
+date: "24 4 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(magrittr)
+library(tidyverse)
+library(mcmc)
+theme_set(theme_bw(20))
+```
+
+# 1. Kumaraswamy
+
+```{r}
+
+# target distribution
+kumaraswamy <- function(x, n, p) n*p*(1 - x^p)^(n-1)*x^(p-1)
+
+# metropolis-hastings
+kumaraswamy_samples <- function(N, init, n, p) {
+  
+  # initial value   
+  y <- init
+  
+  for(i in 2:N) {
+    
+    
+      proposal <- runif(1)
+      alpha <- kumaraswamy(proposal, n, p)/kumaraswamy(y[i-1], n, p)
+      
+      if(runif(1) <= alpha) {
+        y[i] <- proposal
+      } else {
+        y[i] <- y[i-1]
+      }
+     
+  }
+  
+  y
+}
+
+```
+
+
+* Sample and plot the Kumaraswamy distribution for some different n and p
+
+```{r}
+
+n_samples <- 1000
+
+samples <- lapply(c(2, 3, 5, 10, 25), function(p) {
+  
+  lapply(c(5, 10, 50, 100), function(n) {
+    data.frame(x = kumaraswamy_samples(n_samples, 0, n, p),
+               n = rep(n, n_samples),
+               p = rep(p, n_samples))
+  }) %>%
+    do.call(rbind, .)
+  
+}) %>% 
+  do.call(rbind, .)
+
+p <- samples %>% 
+  ggplot(aes(x = x)) + 
+  stat_density(geom = "line") +
+  facet_grid(n ~ p, labeller = label_both)
+
+```
+
+```{r, echo=FALSE, fig.height=10, fig.width=15}
+p
+```
+
+* Sample mean as a function of iterations with n = 100, p = 3
+
+```{r}
+
+mean_evol <- sapply(10*1:100, function(N) {
+  
+  c(m = kumaraswamy_samples(N, 0, n = 100, p = 3) %>% mean, iter = N)
+  
+}) %>% t %>% as.data.frame()
+
+p <- mean_evol %>% 
+  ggplot(aes(x = iter, y = m)) +
+  geom_line()
+
+p
+
+```
+
+
+* Chain autocorrelation
+
+```{r}
+
+some_samples <- kumaraswamy_samples(1000, 0, n = 100, p = 5)
+
+autoc <- acf(some_samples)
+```
+
+* Autocorrelation is approximately 0 at x = 13. 
+
+# 2. Slash  
+
+```{r}
+
+slash <- function(x) {
+  
+  if(x == 0) {
+    y = 1/(2*sqrt(2*pi))
+  } else {
+    y = (dnorm(0) - dnorm(x)) / x^2
+  }
+  y
+}
+  
+slash_samples <- function(N, init = 0) {
+  
+  y <- init
+  
+  for(i in 2:N) {
+      proposal <- rnorm(1, y[i-1], 1)
+      
+      alpha <- slash(proposal)/slash(y[i-1])
+      
+      if(runif(1) <= alpha) {
+        y[i] <-  proposal
+      } else {
+        y[i] <- y[i-1]
+      }
+  }
+  y
+}
+
+```
+
+
+
+## Plots
+
+* Slash distribution
+
+```{r}
+
+ss <- slash_samples(1000)
+
+data.frame(x = ss) %>% 
+  ggplot(aes(x = x)) +
+  stat_density(geom = "line")
+
+```
+
+
+
+```{r}
+
+set.seed(11235)
+mean_evol <- sapply(10*1:250, function(N) {
+  
+  c(m = slash_samples(N) %>% mean, iter = N)
+  
+}) %>% t %>% as.data.frame()
+
+p <- mean_evol %>% 
+  ggplot(aes(x = iter, y = m)) +
+  geom_line()
+
+print(p)
+```
+
+* There are weird extreme values of the mean. Lets' see what one of these outliers looks like:
+
+```{r}
+
+
+mean_evol <- lapply(10*1:100, function(N) {
+  
+  c(x = slash_samples(N), iter = N) 
+  
+})
+
+
+ind <- lapply(mean_evol, mean) %>% unlist %>% which.max()
+
+p <- as.data.frame(mean_evol[[ind]]) %>% 
+  set_colnames("x") %>% 
+  ggplot(aes(x = x)) +
+  stat_density(geom = "line")
+
+print(p)
+
+```
+
+* So the reason for a huge mean values is occasional outlier samples from the target.
+
+
+
+# 3. mcmc::metrop
+
+```{r}
+
+# target log density
+log_f <- function(x) -(x[1]^2 + x[2]^2 - 3)^2
+
+
+n_samples <- 1000
+
+
+samples <- lapply(c(0.01, 0.05, 0.1, 0.5, 1, 5), function(s) {
+  xs <- metrop(log_f, c(0, 0), n_samples, scale = s)$batch
+  
+  xs <- xs %>%
+    as.data.frame() %>% 
+    set_colnames(c("x", "y")) %>% 
+    cbind(scale = rep(s, n_samples))
+  
+}) %>% do.call(rbind, .)
+
+
+```
+
+
+* Plot
+
+```{r}
+
+p <- samples %>% 
+  ggplot(aes(x = x, y = y)) +
+  geom_line() + 
+  geom_point(size = .5, color = "red") +
+  facet_wrap(~scale) +
+  labs(title = "MCMC paths with various scales")
+
+print(p)
+
+```
+
+* Scale = 0.5 seems a decent value. 
+
+* Try bad initial values
+
+```{r}
+
+inits <- list(c(5, 0), c(5, 5), c(5, 10), c(10, 10), c(5, -15), c(-20, 20))
+
+samples <- lapply(1:length(inits), function(i) {
+  xs <- metrop(log_f, initial = inits[[i]], n_samples, scale = 0.5)$batch
+  
+  xs <- xs %>%
+    as.data.frame() %>% 
+    set_colnames(c("x", "y")) %>% 
+    cbind(inits = i)
+  
+}) %>% do.call(rbind, .)
+
+p <- samples %>% 
+  ggplot(aes(x = x, y = y)) +
+  geom_line() + 
+  facet_wrap(~inits, scales = "free") +
+  labs(title = "MCMC paths with various initial values")
+
+print(p)
+
+```
+
